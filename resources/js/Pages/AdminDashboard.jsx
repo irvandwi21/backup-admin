@@ -1,56 +1,21 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import AdminLayout from "@/Layouts/AdminLayout";
+import axios from "axios";
 
-// --- DATA AWAL STATIS ---
-const INITIAL_PRODUCTS = [
-    { id: "PRD-001", name: "NVIDIA GeForce RTX 4060 Ti", category: "VGA", price: 7500000, stock: 14, status: "Ready", image: "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=150&auto=format&fit=crop&q=60", salesGrowth: 85 },
-    { id: "PRD-002", name: "ASUS ROG Strix G16 Laptop", category: "Laptop", price: 19500000, stock: 5, status: "Ready", image: "https://images.unsplash.com/photo-1603302576837-37561b2e2302?w=150&auto=format&fit=crop&q=60", salesGrowth: 62 },
-    { id: "PRD-003", name: "AMD Ryzen 7 7800X3D Processor", category: "CPU", price: 6200000, stock: 0, status: "Habis", image: "https://images.unsplash.com/photo-1591488320449-011701bb6704?w=150&auto=format&fit=crop&q=60", salesGrowth: 15 },
-];
-
-const STATS_DATA = [
-    { title: "Pendapatan", value: "Rp 250 JT", change: "+18%", isPositive: true, sparkline: [30, 45, 40, 65, 50, 85, 90] },
-    { title: "Pesanan", value: "1.250", change: "+12%", isPositive: true, sparkline: [20, 35, 60, 45, 70, 65, 80] },
-    { title: "Customer", value: "850", change: "+9%", isPositive: true, sparkline: [40, 45, 50, 55, 60, 75, 85] },
-    { title: "Performa Toko", value: "94%", change: "Optimal", isPositive: false, sparkline: [80, 82, 85, 88, 90, 92, 94] },
-];
-
-const RECENT_ORDERS = [
-    { id: "#001", product: "RTX 4060", status: "Selesai", statusColor: "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400", total: "Rp 7.500.000", progress: 100 },
-    { id: "#002", product: "ASUS ROG", status: "Diproses", statusColor: "bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400", total: "Rp 15.000.000", progress: 65 },
-    { id: "#003", product: "Ryzen 7", status: "Validasi", statusColor: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400", total: "Rp 6.200.000", progress: 35 },
-];
-
-const TOP_PRODUCTS = [
-    { name: "RTX 4060", width: "w-[90%]", color: "bg-blue-600", percentage: "90%" },
-    { name: "ASUS ROG", width: "w-[75%]", color: "bg-indigo-600", percentage: "75%" },
-    { name: "Ryzen 7", width: "w-[60%]", color: "bg-cyan-600", percentage: "60%" },
-];
-
-const CHART_MONTHLY_DATA = [
-    { label: "Jan", value: 40, units: 80 }, { label: "Feb", value: 60, units: 120 },
-    { label: "Mar", value: 55, units: 110 }, { label: "Apr", value: 80, units: 160 },
-    { label: "Mei", value: 75, units: 150 }, { label: "Jun", value: 90, units: 180 },
-    { label: "Jul", value: 70, units: 140 }, { label: "Agu", value: 100, units: 200 },
-    { label: "Sep", value: 85, units: 170 }, { label: "Okt", value: 95, units: 190 },
-    { label: "Nov", value: 110, units: 220 }, { label: "Des", value: 120, units: 240 }
-];
-
-const CHART_WEEKLY_DATA = [
-    { label: "Minggu 1", value: 45, units: 90 },
-    { label: "Minggu 2", value: 85, units: 170 },
-    { label: "Minggu 3", value: 60, units: 120 },
-    { label: "Minggu 4", value: 115, units: 230 }
-];
-
+const BASE_URL = "http://192.168.115.151:8000";
 const CATEGORIES = ["Laptop", "VGA", "CPU", "RAM", "Storage"];
 
 export default function AdminDashboard() {
     const [activeTab, setActiveTab] = useState("dashboard");
     const [chartTimeframe, setChartTimeframe] = useState("bulanan");
+    const [loading, setLoading] = useState(true);
 
-    // Management Produk States
-    const [products, setProducts] = useState(INITIAL_PRODUCTS);
+    // API Data States
+    const [products, setProducts] = useState([]);
+    const [orders, setOrders] = useState([]);
+    const [customers, setCustomers] = useState([]);
+
+    // Management Produk States (Filter & Search)
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState("Semua");
 
@@ -62,9 +27,43 @@ export default function AdminDashboard() {
     const [formCategory, setFormCategory] = useState("Laptop");
     const [formPrice, setFormPrice] = useState("");
     const [formStock, setFormStock] = useState("");
-    const [formImage, setFormImage] = useState("");
+    const [formImageFile, setFormImageFile] = useState(null); // Menyimpan file asli untuk FormData
+    const [formImagePreview, setFormImagePreview] = useState(""); // Menyimpan URL preview
 
     const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+
+    // API Configurations
+    const token = localStorage.getItem("token");
+    const config = {
+        headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+        },
+    };
+
+    // 1. FETCH ALL DATA (Promise.all)
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            const [resProducts, resOrders, resCustomers] = await Promise.all([
+                axios.get(`${BASE_URL}/api/products`, config),
+                axios.get(`${BASE_URL}/api/orders`, config),
+                axios.get(`${BASE_URL}/api/customers`, config),
+            ]);
+            setProducts(resProducts.data);
+            setOrders(resOrders.data);
+            setCustomers(resCustomers.data);
+        } catch (error) {
+            console.error("Error fetching data:", error);
+            alert("Gagal mengambil data dari server. Silakan periksa koneksi atau token Anda.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchData();
+    }, []);
 
     const triggerToast = (message, type = "success") => {
         setToast({ show: true, message, type });
@@ -78,53 +77,221 @@ export default function AdminDashboard() {
     const handleImageUpload = (e) => {
         const file = e.target.files[0];
         if (file) {
-            setFormImage(URL.createObjectURL(file));
+            setFormImageFile(file);
+            setFormImagePreview(URL.createObjectURL(file));
         }
     };
 
     const openAddModal = () => {
-        setIsEditing(false); setFormName(""); setFormCategory("Laptop"); setFormPrice(""); setFormStock(""); setFormImage(""); setIsModalOpen(true);
+        setIsEditing(false); 
+        setCurrentProductId(null);
+        setFormName(""); 
+        setFormCategory("Laptop"); 
+        setFormPrice(""); 
+        setFormStock(""); 
+        setFormImageFile(null);
+        setFormImagePreview(""); 
+        setIsModalOpen(true);
     };
 
     const openEditModal = (product) => {
-        setIsEditing(true); setCurrentProductId(product.id); setFormName(product.name); setFormCategory(product.category); setFormPrice(product.price); setFormStock(product.stock); setFormImage(product.image || ""); setIsModalOpen(true);
+        setIsEditing(true); 
+        setCurrentProductId(product.id); 
+        setFormName(product.name); 
+        setFormCategory(product.category?.name || "Laptop"); 
+        setFormPrice(product.price); 
+        setFormStock(product.stock); 
+        setFormImageFile(null);
+        setFormImagePreview(product.image ? `${BASE_URL}/products/${product.image}` : ""); 
+        setIsModalOpen(true);
     };
 
-    const handleSaveProduct = (e) => {
+    // 2. CRUD: TAMBAH & EDIT PRODUK
+    const handleSaveProduct = async (e) => {
         e.preventDefault();
-        const priceNum = Number(formPrice);
-        const stockNum = Number(formStock);
-        let statusStr = "Ready";
-        if (stockNum === 0) statusStr = "Habis";
-        else if (stockNum <= 3) statusStr = "Menipis";
+        
+        // Gunakan FormData karena terdapat upload gambar
+        const formData = new FormData();
+        formData.append("name", formName);
+        formData.append("category", formCategory);
+        formData.append("price", formPrice);
+        formData.append("stock", formStock);
+        if (formImageFile) {
+            formData.append("image", formImageFile);
+        }
 
-        const fallbackImg = formImage || "https://images.unsplash.com/photo-1588702547313-2a3b836bc3f1?w=150&auto=format&fit=crop&q=60";
-
+        // Untuk metode PUT di Laravel dengan FormData, seringkali membutuhkan spoofing method _method=PUT
         if (isEditing) {
-            setProducts(products.map(p => p.id === currentProductId ? { ...p, name: formName, category: formCategory, price: priceNum, stock: stockNum, status: statusStr, image: fallbackImg } : p));
-            triggerToast("Produk berhasil diperbarui!", "success");
-        } else {
-            const newId = `PRD-00${products.length + 1}`;
-            setProducts([{ id: newId, name: formName, category: formCategory, price: priceNum, stock: stockNum, status: statusStr, image: fallbackImg, salesGrowth: Math.floor(Math.random() * 100) }, ...products]);
-            triggerToast("Produk baru berhasil ditambahkan!", "success");
+            formData.append("_method", "PUT");
         }
-        setIsModalOpen(false);
+
+        try {
+            setLoading(true);
+            if (isEditing) {
+                await axios.post(`${BASE_URL}/api/products/${currentProductId}`, formData, {
+                    headers: {
+                        ...config.headers,
+                        "Content-Type": "multipart/form-data",
+                    }
+                });
+                triggerToast("Produk berhasil diperbarui!", "success");
+            } else {
+                await axios.post(`${BASE_URL}/api/products`, formData, {
+                    headers: {
+                        ...config.headers,
+                        "Content-Type": "multipart/form-data",
+                    }
+                });
+                triggerToast("Produk baru berhasil ditambahkan!", "success");
+            }
+            setIsModalOpen(false);
+            fetchData(); // Refresh data setelah menyimpan
+        } catch (error) {
+            console.error("Error saving product:", error);
+            alert("Gagal menyimpan produk. Silakan periksa kembali inputan Anda.");
+            setLoading(false);
+        }
     };
 
-    const handleDelete = (id) => {
+    // 3. CRUD: HAPUS PRODUK
+    const handleDelete = async (id) => {
         if (confirm("Apakah Anda yakin ingin menghapus produk ini?")) {
-            setProducts(products.filter(p => p.id !== id));
-            triggerToast("Produk berhasil dihapus", "error");
+            try {
+                setLoading(true);
+                await axios.delete(`${BASE_URL}/api/products/${id}`, config);
+                triggerToast("Produk berhasil dihapus", "error");
+                fetchData(); // Refresh data setelah menghapus
+            } catch (error) {
+                console.error("Error deleting product:", error);
+                alert("Gagal menghapus produk.");
+                setLoading(false);
+            }
         }
     };
 
+    // =========================================================
+    // DATA KONTROL OTOMATIS BERDASARKAN REAL API
+    // =========================================================
+    
+    // Total Pendapatan / Revenue
+    const totalRevenue = orders.reduce((sum, item) => sum + Number(item.total_price || 0), 0);
+
+    // Pemetaan Progress Pengiriman
+    const getShippingProgress = (status) => {
+        switch (status?.toLowerCase()) {
+            case "menunggu": return 20;
+            case "diproses": return 50;
+            case "dikirim": return 80;
+            case "selesai": return 100;
+            case "dibatalkan": return 0;
+            default: return 0;
+        }
+    };
+
+    const getStatusColor = (status) => {
+        switch (status?.toLowerCase()) {
+            case "selesai": return "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400";
+            case "diproses": return "bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400";
+            case "menunggu": return "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400";
+            case "dikirim": return "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400";
+            default: return "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400";
+        }
+    };
+
+    // Hitung Top Produk Terlaris (Berdasarkan kemunculan nama produk terbanyak di orders)
+    const getTopProducts = () => {
+        const counts = {};
+        orders.forEach(order => {
+            if (order.product_name) {
+                counts[order.product_name] = (counts[order.product_name] || 0) + Number(order.qty || 1);
+            }
+        });
+
+        const sorted = Object.keys(counts).map(name => ({
+            name,
+            count: counts[name]
+        })).sort((a, b) => b.count - a.count).slice(0, 5);
+
+        const maxCount = sorted[0]?.count || 1;
+        const colors = ["bg-blue-600", "bg-indigo-600", "bg-cyan-600", "bg-purple-600", "bg-emerald-600"];
+
+        return sorted.map((item, idx) => {
+            const percentage = Math.round((item.count / maxCount) * 100);
+            return {
+                name: item.name,
+                width: `w-[${percentage}%]`,
+                styleWidth: { width: `${percentage}%` },
+                color: colors[idx % colors.length],
+                percentage: `${percentage}%`
+            };
+        });
+    };
+
+    // Pembuatan Data Chart Otomatis (Bulanan & Mingguan)
+    const getChartData = () => {
+        const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+        
+        if (chartTimeframe === "bulanan") {
+            const monthlyRevenue = Array(12).fill(0);
+            const monthlyUnits = Array(12).fill(0);
+
+            orders.forEach(order => {
+                // Asumsi format data order_code mengandung tanggal (ORD-YYYYMMDD) atau mengelompokkan manual
+                // Untuk demo ekstraksi aman, jika tidak ada create_at kita gunakan bulan acak dari order_code atau default Jan
+                const match = order.order_code?.match(/(\d{4})(\d{2})(\d{2})/);
+                let monthIdx = 0; // default Januari jika gagal parsing
+                if (match && match[2]) {
+                    monthIdx = parseInt(match[2], 10) - 1;
+                }
+                if (monthIdx >= 0 && monthIdx < 12) {
+                    monthlyRevenue[monthIdx] += Number(order.total_price || 0);
+                    monthlyUnits[monthIdx] += Number(order.qty || 1);
+                }
+            });
+
+            const maxRevenue = Math.max(...monthlyRevenue, 1);
+
+            return months.map((month, idx) => ({
+                label: month,
+                value: (monthlyRevenue[idx] / maxRevenue) * 100 || 5, // minimal tinggi 5% agar tetap terlihat batangnya
+                units: monthlyUnits[idx]
+            }));
+        } else {
+            // Logika Mingguan Sederhana (Membagi order berdasarkan digit terakhir order_code atau hari)
+            const weeklyRevenue = Array(4).fill(0);
+            const weeklyUnits = Array(4).fill(0);
+
+            orders.forEach((order, idx) => {
+                const weekIdx = idx % 4; // Mengelompokkan rotasi sebagai perwakilan mingguan
+                weeklyRevenue[weekIdx] += Number(order.total_price || 0);
+                weeklyUnits[weekIdx] += Number(order.qty || 1);
+            });
+
+            const maxRevenue = Math.max(...weeklyRevenue, 1);
+            return Array(4).fill(0).map((_, idx) => ({
+                label: `Minggu ${idx + 1}`,
+                value: (weeklyRevenue[idx] / maxRevenue) * 100 || 5,
+                units: weeklyUnits[idx]
+            }));
+        }
+    };
+
+    // Filter Produk untuk Halaman Kelola Produk
     const filteredProducts = products.filter((product) => {
-        const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) || product.id.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesCategory = selectedCategory === "Semua" || product.category === selectedCategory;
+        const matchesSearch = product.name?.toLowerCase().includes(searchQuery.toLowerCase()) || product.id?.toString().includes(searchQuery);
+        const matchesCategory = selectedCategory === "Semua" || product.category?.name === selectedCategory;
         return matchesSearch && matchesCategory;
     });
 
-    const currentChartData = chartTimeframe === "bulanan" ? CHART_MONTHLY_DATA : CHART_WEEKLY_DATA;
+    const currentChartData = getChartData();
+    const topProductsData = getTopProducts();
+
+    // Logic Status Stok Produk
+    const getStockStatus = (stock) => {
+        if (stock === 0) return { text: "Habis", class: "bg-red-50 text-red-600" };
+        if (stock <= 5) return { text: "Menipis", class: "bg-yellow-50 text-yellow-600" };
+        return { text: "Ready", class: "bg-green-50 text-green-600 dark:bg-green-950/30 dark:text-green-400" };
+    };
 
     return (
         <AdminLayout>
@@ -135,6 +302,13 @@ export default function AdminDashboard() {
                     <div className="fixed top-6 right-6 z-[100] flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl bg-zinc-900 border border-zinc-800 text-white font-bold text-sm">
                         <span className="text-green-400">{toast.type === 'success' ? '⚡' : '🗑️'}</span>
                         {toast.message}
+                    </div>
+                )}
+
+                {/* LOADING SPINNER STATE */}
+                {loading && (
+                    <div className="fixed inset-0 z-[150] bg-black/40 backdrop-blur-sm flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-14 w-14 border-t-4 border-b-4 border-blue-600"></div>
                     </div>
                 )}
 
@@ -161,34 +335,71 @@ export default function AdminDashboard() {
                                 <p className="mt-2 text-zinc-400 font-medium text-sm">Sistem visualisasi inventori dan kontrol distribusi produk otomatis.</p>
                                 <div className="mt-6 flex flex-wrap gap-4">
                                     <button onClick={() => setActiveTab("produk")} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold hover:bg-blue-700 transition shadow-lg text-sm">Kelola Produk</button>
-                                    <button onClick={() => setActiveTab("laporan")} className="bg-zinc-800 text-zinc-300 border border-zinc-700 px-6 py-3 rounded-2xl font-bold hover:bg-zinc-700 transition text-sm">Lihat Laporan</button>
+                                    <button onClick={() => setActiveTab("produk")} className="bg-zinc-800 text-zinc-300 border border-zinc-700 px-6 py-3 rounded-2xl font-bold hover:bg-zinc-700 transition text-sm">Lihat Laporan</button>
                                 </div>
                             </div>
                         </div>
 
-                        {/* CARD STATISTIK */}
+                        {/* CARD STATISTIK REAL API */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                            {STATS_DATA.map((stat, i) => (
-                                <div key={i} className="bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-sm border border-zinc-100 dark:border-zinc-800 flex flex-col justify-between h-40 hover:border-zinc-300 dark:hover:border-zinc-700 transition">
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">{stat.title}</p>
-                                            <h2 className="text-2xl font-black mt-1 text-zinc-900 dark:text-white">{stat.value}</h2>
-                                        </div>
-                                        <span className={`text-xs font-bold px-2 py-0.5 rounded-lg ${stat.isPositive ? 'bg-green-50 text-green-600 dark:bg-green-950/30 dark:text-green-400' : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800'}`}>
-                                            {stat.change}
-                                        </span>
+                            {/* Pendapatan */}
+                            <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-sm border border-zinc-100 dark:border-zinc-800 flex flex-col justify-between h-40 hover:border-zinc-300 dark:hover:border-zinc-700 transition">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Pendapatan</p>
+                                        <h2 className="text-2xl font-black mt-1 text-zinc-900 dark:text-white">{formatRupiah(totalRevenue)}</h2>
                                     </div>
-                                    <div className="h-10 flex items-end gap-1 pt-2">
-                                        {stat.sparkline.map((val, idx) => (
-                                            <div key={idx} className={`flex-1 rounded-t-sm ${stat.isPositive ? 'bg-blue-500/40' : 'bg-zinc-400/30'}`} style={{ height: `${val}%` }} />
-                                        ))}
-                                    </div>
+                                    <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-green-50 text-green-600 dark:bg-green-950/30 dark:text-green-400">Live</span>
                                 </div>
-                            ))}
+                                <div className="h-10 flex items-end gap-1 pt-2">
+                                    {[40, 55, 45, 60, 55, 75, 90].map((val, idx) => <div key={idx} className="flex-1 rounded-t-sm bg-blue-500/40" style={{ height: `${val}%` }} />)}
+                                </div>
+                            </div>
+
+                            {/* Pesanan */}
+                            <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-sm border border-zinc-100 dark:border-zinc-800 flex flex-col justify-between h-40 hover:border-zinc-300 dark:hover:border-zinc-700 transition">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Pesanan</p>
+                                        <h2 className="text-2xl font-black mt-1 text-zinc-900 dark:text-white">{orders.length}</h2>
+                                    </div>
+                                    <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-green-50 text-green-600 dark:bg-green-950/30 dark:text-green-400">Total</span>
+                                </div>
+                                <div className="h-10 flex items-end gap-1 pt-2">
+                                    {[30, 45, 35, 50, 65, 55, 80].map((val, idx) => <div key={idx} className="flex-1 rounded-t-sm bg-blue-500/40" style={{ height: `${val}%` }} />)}
+                                </div>
+                            </div>
+
+                            {/* Customer */}
+                            <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-sm border border-zinc-100 dark:border-zinc-800 flex flex-col justify-between h-40 hover:border-zinc-300 dark:hover:border-zinc-700 transition">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Customer</p>
+                                        <h2 className="text-2xl font-black mt-1 text-zinc-900 dark:text-white">{customers.length}</h2>
+                                    </div>
+                                    <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-green-50 text-green-600 dark:bg-green-950/30 dark:text-green-400">Aktif</span>
+                                </div>
+                                <div className="h-10 flex items-end gap-1 pt-2">
+                                    {[50, 40, 60, 55, 70, 65, 85].map((val, idx) => <div key={idx} className="flex-1 rounded-t-sm bg-blue-500/40" style={{ height: `${val}%` }} />)}
+                                </div>
+                            </div>
+
+                            {/* Total Produk */}
+                            <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-sm border border-zinc-100 dark:border-zinc-800 flex flex-col justify-between h-40 hover:border-zinc-300 dark:hover:border-zinc-700 transition">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Total Produk</p>
+                                        <h2 className="text-2xl font-black mt-1 text-zinc-900 dark:text-white">{products.length}</h2>
+                                    </div>
+                                    <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-zinc-100 text-zinc-500 dark:bg-zinc-800">Items</span>
+                                </div>
+                                <div className="h-10 flex items-end gap-1 pt-2">
+                                    {[80, 82, 85, 88, 90, 92, 94].map((val, idx) => <div key={idx} className="flex-1 rounded-t-sm bg-zinc-400/30" style={{ height: `${val}%` }} />)}
+                                </div>
+                            </div>
                         </div>
 
-                        {/* CHART UTAMA DENGAN FILTER TIMEFRAME */}
+                        {/* CHART DENGAN DATA API KELOMPOK BULANAN / MINGGUAN */}
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             <div className="lg:col-span-2 bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-md border border-zinc-100 dark:border-zinc-800">
                                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
@@ -231,57 +442,63 @@ export default function AdminDashboard() {
                             </div>
                         </div>
 
-                        {/* ========================================================= */}
-                        {/* BAGIAN YANG KEMBALI DITAMBAHKAN (JALUR PENGIRIMAN & TOP)  */}
-                        {/* ========================================================= */}
+                        {/* JALUR PENGIRIMAN & TOP PRODUK DARI REAL API */}
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* DATA JALUR PENGIRIMAN REAL */}
                             <div className="lg:col-span-2 bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-md border border-zinc-100 dark:border-zinc-800 overflow-x-auto">
                                 <h2 className="text-lg font-bold text-zinc-800 dark:text-zinc-100 mb-6">📦 Status Jalur Pengiriman</h2>
                                 <table className="w-full text-sm text-left">
                                     <thead>
                                         <tr className="text-zinc-400 border-b border-zinc-100 dark:border-zinc-800 font-bold text-xs uppercase">
-                                            <th className="pb-3">ID</th>
+                                            <th className="pb-3">Kode Order</th>
+                                            <th className="pb-3">Customer</th>
                                             <th className="pb-3">Produk</th>
                                             <th className="pb-3">Tahapan Ring</th>
                                             <th className="pb-3 text-right">Total</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 text-zinc-700 dark:text-zinc-300">
-                                        {RECENT_ORDERS.map((order) => (
-                                            <tr key={order.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition">
-                                                <td className="py-3.5 font-bold text-zinc-400">{order.id}</td>
-                                                <td className="py-3.5 font-bold text-zinc-900 dark:text-white">{order.product}</td>
+                                        {orders.slice(0, 5).map((order, idx) => (
+                                            <tr key={idx} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition">
+                                                <td className="py-3.5 font-bold text-zinc-400">{order.order_code}</td>
+                                                <td className="py-3.5 font-medium">{order.customer_name}</td>
+                                                <td className="py-3.5 font-bold text-zinc-900 dark:text-white">{order.product_name}</td>
                                                 <td className="py-3.5 flex items-center gap-3">
                                                     <div className="relative w-7 h-7 flex items-center justify-center">
                                                         <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
                                                             <path className="text-zinc-100 dark:text-zinc-800" strokeWidth="4" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                                            <path className="text-indigo-500" strokeDasharray={`${order.progress}, 100`} strokeWidth="4" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                                            <path className="text-indigo-500" strokeDasharray={`${getShippingProgress(order.shipping_status)}, 100`} strokeWidth="4" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                                                         </svg>
-                                                        <span className="absolute text-[8px] font-black text-zinc-800 dark:text-zinc-200">{order.progress}%</span>
+                                                        <span className="absolute text-[8px] font-black text-zinc-800 dark:text-zinc-200">{getShippingProgress(order.shipping_status)}%</span>
                                                     </div>
-                                                    <span className={`px-2.5 py-0.5 text-[10px] font-black rounded-md ${order.statusColor}`}>{order.status}</span>
+                                                    <span className={`px-2.5 py-0.5 text-[10px] font-black rounded-md ${getStatusColor(order.shipping_status)}`}>{order.shipping_status}</span>
                                                 </td>
-                                                <td className="py-3.5 text-right font-black text-zinc-900 dark:text-white">{order.total}</td>
+                                                <td className="py-3.5 text-right font-black text-zinc-900 dark:text-white">{formatRupiah(order.total_price)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
                             </div>
 
+                            {/* TOP PRODUK TERLARIS DIHITUNG OTOMATIS */}
                             <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-md border border-zinc-100 dark:border-zinc-800">
-                                <h2 className="text-lg font-bold text-zinc-800 dark:text-zinc-100 mb-6">🔥 Top Kategori Efisiensi</h2>
+                                <h2 className="text-lg font-bold text-zinc-800 dark:text-zinc-100 mb-6">🔥 Top 5 Produk Terlaris</h2>
                                 <div className="space-y-5">
-                                    {TOP_PRODUCTS.map((prod, i) => (
-                                        <div key={i}>
-                                            <div className="flex justify-between items-center text-xs font-bold text-zinc-600 dark:text-zinc-400">
-                                                <span>{prod.name}</span>
-                                                <span>{prod.percentage}</span>
+                                    {topProductsData.length === 0 ? (
+                                        <p className="text-xs text-zinc-400 font-medium">Belum ada data pesanan.</p>
+                                    ) : (
+                                        topProductsData.map((prod, i) => (
+                                            <div key={i}>
+                                                <div className="flex justify-between items-center text-xs font-bold text-zinc-600 dark:text-zinc-400">
+                                                    <span className="truncate max-w-[150px]">{prod.name}</span>
+                                                    <span>{prod.percentage}</span>
+                                                </div>
+                                                <div className="bg-zinc-100 dark:bg-zinc-800 rounded-full h-2 mt-2 overflow-hidden border dark:border-zinc-700">
+                                                    <div className={`${prod.color} h-full rounded-full transition-all duration-500`} style={prod.styleWidth} />
+                                                </div>
                                             </div>
-                                            <div className="bg-zinc-100 dark:bg-zinc-800 rounded-full h-2 mt-2 overflow-hidden border dark:border-zinc-700">
-                                                <div className={`${prod.color} ${prod.width} h-full rounded-full`} />
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -289,7 +506,7 @@ export default function AdminDashboard() {
                 )}
 
                 {/* ========================================================= */}
-                {/* TAMPILAN 2: HALAMAN KELOLA PRODUK                          */}
+                {/* TAMPILAN 2: HALAMAN KELOLA PRODUK REAL                    */}
                 {/* ========================================================= */}
                 {activeTab === "produk" && (
                     <>
@@ -323,43 +540,45 @@ export default function AdminDashboard() {
                                             <th className="py-4 px-6">Kategori</th>
                                             <th className="py-4 px-6">Harga</th>
                                             <th className="py-4 px-6 text-center">Stok</th>
-                                            <th className="py-4 px-6">Grafik Laju</th>
                                             <th className="py-4 px-6">Status</th>
                                             <th className="py-4 px-6 text-center">Aksi</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 text-zinc-700 dark:text-zinc-300">
-                                        {filteredProducts.map((product) => (
-                                            <tr key={product.id} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40 transition">
-                                                <td className="py-4 px-6">
-                                                    <img src={product.image} alt="thumb" className="w-11 h-11 rounded-xl object-cover border dark:border-zinc-700 bg-zinc-100" />
-                                                </td>
-                                                <td className="py-4 px-6">
-                                                    <div className="font-bold text-zinc-900 dark:text-white">{product.name}</div>
-                                                    <div className="text-[10px] text-zinc-400 font-bold mt-0.5">{product.id}</div>
-                                                </td>
-                                                <td className="py-4 px-6"><span className="bg-zinc-50 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 px-2.5 py-1 text-xs font-bold rounded-lg border dark:border-zinc-700">{product.category}</span></td>
-                                                <td className="py-4 px-6 font-black text-zinc-900 dark:text-zinc-100">{formatRupiah(product.price)}</td>
-                                                <td className="py-4 px-6 text-center font-bold">{product.stock}</td>
-                                                <td className="py-4 px-6 w-32">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="flex-1 bg-zinc-100 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
-                                                            <div className="bg-blue-500 h-full rounded-full" style={{ width: `${product.salesGrowth || 30}%` }} />
+                                        {filteredProducts.map((product) => {
+                                            const stockStatus = getStockStatus(product.stock);
+                                            return (
+                                                <tr key={product.id} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40 transition">
+                                                    <td className="py-4 px-6">
+                                                        <img 
+                                                            src={product.image ? `${BASE_URL}/products/${product.image}` : "https://via.placeholder.com/150?text=No+Image"} 
+                                                            alt={product.name} 
+                                                            className="w-11 h-11 rounded-xl object-cover border dark:border-zinc-700 bg-zinc-100" 
+                                                        />
+                                                    </td>
+                                                    <td className="py-4 px-6">
+                                                        <div className="font-bold text-zinc-900 dark:text-white">{product.name}</div>
+                                                        <div className="text-[10px] text-zinc-400 font-bold mt-0.5">ID: {product.id}</div>
+                                                    </td>
+                                                    <td className="py-4 px-6">
+                                                        <span className="bg-zinc-50 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 px-2.5 py-1 text-xs font-bold rounded-lg border dark:border-zinc-700">
+                                                            {product.category?.name || product.category || "General"}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-4 px-6 font-black text-zinc-900 dark:text-zinc-100">{formatRupiah(product.price)}</td>
+                                                    <td className="py-4 px-6 text-center font-bold">{product.stock}</td>
+                                                    <td className="py-4 px-6">
+                                                        <span className={`px-2.5 py-1 text-[10px] font-black rounded-md ${stockStatus.class}`}>{stockStatus.text}</span>
+                                                    </td>
+                                                    <td className="py-4 px-6 text-center">
+                                                        <div className="flex items-center justify-center gap-1.5">
+                                                            <button onClick={() => openEditModal(product)} className="text-blue-600 font-bold text-xs bg-blue-50 dark:bg-blue-900/20 px-2.5 py-1.5 rounded-xl">Edit</button>
+                                                            <button onClick={() => handleDelete(product.id)} className="text-red-600 font-bold text-xs bg-red-50 dark:bg-red-900/20 px-2.5 py-1.5 rounded-xl">Hapus</button>
                                                         </div>
-                                                        <span className="text-[10px] font-bold text-zinc-400">{product.salesGrowth || 30}%</span>
-                                                    </div>
-                                                </td>
-                                                <td className="py-4 px-6">
-                                                    <span className={`px-2.5 py-1 text-[10px] font-black rounded-md ${product.status === "Ready" ? "bg-green-50 text-green-600 dark:bg-green-950/30 dark:text-green-400" : product.status === "Menipis" ? "bg-yellow-50 text-yellow-600" : "bg-red-50 text-red-600"}`}>{product.status}</span>
-                                                </td>
-                                                <td className="py-4 px-6 text-center">
-                                                    <div className="flex items-center justify-center gap-1.5">
-                                                        <button onClick={() => openEditModal(product)} className="text-blue-600 font-bold text-xs bg-blue-50 dark:bg-blue-900/20 px-2.5 py-1.5 rounded-xl">Edit</button>
-                                                        <button onClick={() => handleDelete(product.id)} className="text-red-600 font-bold text-xs bg-red-50 dark:bg-red-900/20 px-2.5 py-1.5 rounded-xl">Hapus</button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -367,7 +586,7 @@ export default function AdminDashboard() {
                     </>
                 )}
 
-                {/* MODAL POP-UP */}
+                {/* MODAL POP-UP FORM REGISTRASI / MODIFIKASI DATA */}
                 {isModalOpen && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                         <div className="bg-white dark:bg-zinc-900 rounded-3xl w-full max-w-md p-6 shadow-2xl border dark:border-zinc-800">
@@ -375,7 +594,7 @@ export default function AdminDashboard() {
                             <form onSubmit={handleSaveProduct} className="space-y-4">
                                 <div className="flex items-center gap-4 p-3 bg-zinc-50 dark:bg-zinc-800 rounded-2xl border border-dashed dark:border-zinc-700">
                                     <div className="w-14 h-14 rounded-xl bg-zinc-200 dark:bg-zinc-700 flex-shrink-0 overflow-hidden border">
-                                        {formImage ? <img src={formImage} alt="preview" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg">📷</div>}
+                                        {formImagePreview ? <img src={formImagePreview} alt="preview" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg">📷</div>}
                                     </div>
                                     <div className="flex-1">
                                         <label className="block text-xs font-bold text-blue-500 cursor-pointer hover:underline">
@@ -391,7 +610,7 @@ export default function AdminDashboard() {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Kategori</label>
-                                    <select value={formCategory} onChange={(e) => setFormCategory(e.target.value)} className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-800 rounded-xl border dark:border-zinc-700 outline-none text-sm font-bold">
+                                    <select value={formCategory} onChange={(e) => setFormCategory(e.target.value)} className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-800 rounded-xl border dark:border-zinc-700 outline-none text-sm font-bold text-zinc-800 dark:text-white">
                                         {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
                                 </div>
@@ -401,13 +620,13 @@ export default function AdminDashboard() {
                                         <input type="number" required value={formPrice} onChange={(e) => setFormPrice(e.target.value)} className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-800 rounded-xl border dark:border-zinc-700 outline-none text-sm font-bold" />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Stok Gudang</label>
+                                        <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Jumlah Stok</label>
                                         <input type="number" required value={formStock} onChange={(e) => setFormStock(e.target.value)} className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-800 rounded-xl border dark:border-zinc-700 outline-none text-sm font-bold" />
                                     </div>
                                 </div>
-                                <div className="pt-2 flex items-center justify-end gap-2">
-                                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2.5 text-xs font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl">Batalkan</button>
-                                    <button type="submit" className="px-5 py-2.5 text-xs font-bold bg-blue-600 text-white rounded-xl shadow-lg">Simpan Data</button>
+                                <div className="flex items-center justify-end gap-3 pt-4 border-t dark:border-zinc-800 mt-6">
+                                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-xl font-bold text-xs hover:opacity-80 transition">Batal</button>
+                                    <button type="submit" className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 transition shadow-md shadow-blue-500/20">Simpan Data</button>
                                 </div>
                             </form>
                         </div>
