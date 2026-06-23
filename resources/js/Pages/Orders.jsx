@@ -23,6 +23,7 @@ export default function Orders() {
         fetchOrders();
     }, []);
 
+    // 1. Ketentuan Mapping Data API & items array fallback
     const fetchOrders = async () => {
         try {
             const token = localStorage.getItem("token");
@@ -38,13 +39,16 @@ export default function Orders() {
             );
 
             const data = response.data.map((item) => ({
-                id: item.order_code,
+                db_id: item.id,
+                id: item.order_code, // order.id === order_code untuk kebutuhan parameter route backend
                 customer: item.customer_name,
-                product: item.product_name,
+                items: item.items || [], // Menyimpan array asli untuk iterasi badge hardware
+                product: item.items?.map(i => i.product_name).join(", ") || "-",
                 total: Number(item.total_price),
                 status: item.shipping_status,
                 payment: item.payment_status,
-                payment_method: item.payment_method, // Diambil dari API backend
+                payment_method: item.payment_method,
+                tracking_number: item.tracking_number,
                 date: new Date(item.created_at).toLocaleDateString("id-ID"),
             }));
 
@@ -74,15 +78,16 @@ export default function Orders() {
             return;
         }
 
-        // Poin 3: Menambahkan payment_method default "COD" saat create data manual
         const newOrder = {
             id: "ORD" + Math.floor(100 + Math.random() * 900),
             customer: form.customer,
             product: form.product,
+            items: [{ product_name: form.product, qty: 1, subtotal: Number(form.total) }],
             total: Number(form.total),
             status: "Diproses",
             payment: form.payment,
             payment_method: "COD",
+            tracking_number: null,
             date: new Date().toLocaleDateString("id-ID"),
         };
 
@@ -90,7 +95,7 @@ export default function Orders() {
         setShowModal(false);
     };
 
-    // FIX: Mengirim request DELETE ke API backend agar data terhapus permanen di database
+    // 5. Ketentuan Tombol Hapus menggunakan order_code (order.id)
     const hapusPesanan = async (id) => {
         if (window.confirm("Apakah Anda yakin ingin menghapus arsip transaksi ini dari database secara permanen?")) {
             try {
@@ -103,7 +108,7 @@ export default function Orders() {
                     },
                 });
 
-                // Hapus data dari state lokal jika backend sukses merespons
+                // Mengeluarkan pesanan dari state lokal setelah berhasil
                 setOrders(orders.filter((order) => order.id !== id));
                 alert("Pesanan berhasil dihapus.");
             } catch (error) {
@@ -113,7 +118,7 @@ export default function Orders() {
         }
     };
 
-    // FIX: Mengirim request PUT ke API backend agar perubahan status langsung disimpan dan tidak hilang saat pindah halaman
+    // 3 & 4. Ketentuan Dropdown Update Status & Auto Refresh untuk Resi Otomatis Backend
     const updateStatus = async (id, status) => {
         try {
             const token = localStorage.getItem("token");
@@ -129,8 +134,8 @@ export default function Orders() {
                 }
             );
 
-            // Update state lokal setelah database sukses diperbarui
-            setOrders(orders.map((order) => order.id === id ? { ...order, status } : order));
+            // Cukup refresh data setelah update status agar nomor resi baru dari backend langsung termuat
+            await fetchOrders();
         } catch (error) {
             console.error("Gagal memperbarui status alur:", error);
             alert("Gagal menyimpan perubahan status ke database.");
@@ -258,16 +263,35 @@ export default function Orders() {
                                     <tr key={order.id} className="hover:bg-zinc-50/60 dark:hover:bg-zinc-800/20 transition duration-150">
                                         <td className="py-4 px-6 font-mono text-xs font-bold text-zinc-400">{order.id}</td>
                                         <td className="py-4 px-6 font-bold text-zinc-900 dark:text-white text-base">{order.customer}</td>
+                                        
+                                        {/* 2. Ketentuan Format Baru Item Hardware dari array items */}
                                         <td className="py-4 px-6">
-                                            <span className="bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2.5 py-1 text-xs font-bold rounded-lg border dark:border-zinc-700 whitespace-nowrap">
-                                                {order.product}
-                                            </span>
+                                            <div className="flex flex-col gap-1">
+                                                {order.items?.map((item, index) => (
+                                                    <span
+                                                        key={index}
+                                                        className="
+                                                            bg-zinc-100
+                                                            dark:bg-zinc-800
+                                                            px-2
+                                                            py-1
+                                                            rounded-lg
+                                                            text-xs
+                                                            font-bold
+                                                            w-fit
+                                                        "
+                                                    >
+                                                        {item.product_name} x{item.qty}
+                                                    </span>
+                                                ))}
+                                            </div>
                                         </td>
+
                                         <td className="py-4 px-6 font-black text-blue-600 dark:text-blue-400 whitespace-nowrap">{formatRupiah(order.total)}</td>
                                         
                                         {/* Status Bayar */}
                                         <td className="py-4 px-6">
-                                            <span className={`px-2.5 py-0.5 rounded text-xs font-bold ${order.payment === "Lunas" ? "text-green-500 bg-green-500/10" : "text-amber-500 bg-amber-500/10"}`}>
+                                            <span className={`px-2.5 py-0.5 rounded text-xs font-bold ${order.payment === "PAID" || order.payment === "Lunas" ? "text-green-500 bg-green-500/10" : "text-amber-500 bg-amber-500/10"}`}>
                                                 {order.payment}
                                             </span>
                                         </td>
@@ -292,6 +316,7 @@ export default function Orders() {
                                                         onChange={(e) => updateStatus(order.id, e.target.value)}
                                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                                                     >
+                                                        <option value="Pending" className="text-zinc-900 bg-white">Pending</option>
                                                         <option value="Diproses" className="text-zinc-900 bg-white">Diproses</option>
                                                         <option value="Dikirim" className="text-zinc-900 bg-white">Dikirim</option>
                                                         <option value="Selesai" className="text-zinc-900 bg-white">Selesai</option>
@@ -407,7 +432,7 @@ export default function Orders() {
                 </div>
             )}
 
-            {/* MODAL DETAIL PESANAN */}
+            {/* 6 & 7. MODAL DETAIL PESANAN YANG DIPERBAIKI */}
             {selectedOrder && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 p-6 rounded-3xl w-full max-w-md shadow-2xl text-zinc-900 dark:text-white">
@@ -417,29 +442,74 @@ export default function Orders() {
                         </div>
 
                         <div className="space-y-3.5 bg-zinc-50 dark:bg-zinc-800/40 p-4 rounded-2xl border dark:border-zinc-800/80">
-                            {[
-                                { label: "Nama Konsumen", val: selectedOrder.customer, isHighlight: true },
-                                { label: "Item Hardware", val: selectedOrder.product },
-                                { label: "Total Pembayaran", val: formatRupiah(selectedOrder.total), isPrice: true },
-                                { label: "Verifikasi Finansial", val: selectedOrder.payment },
-                                { label: "Metode Pembayaran", val: selectedOrder.payment_method || "COD" },
-                                { label: "Status Distribusi", val: selectedOrder.status, isStatus: true },
-                                { label: "Tanggal Pencatatan", val: selectedOrder.date }
-                            ].map((row, idx) => (
-                                <div key={idx} className="flex justify-between items-center text-sm border-b border-zinc-100 dark:border-zinc-800/60 pb-2.5 last:border-none last:pb-0">
-                                    <span className="font-bold text-zinc-400 text-xs uppercase tracking-wider">{row.label}</span>
-                                    {row.isStatus ? (
-                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black rounded-lg uppercase border tracking-wider ${getStatusStyle(row.val)}`}>
-                                            <span className={`w-1 h-1 rounded-full ${getDotStyle(row.val)}`}></span>
-                                            {row.val}
-                                        </span>
-                                    ) : (
-                                        <span className={`font-medium ${row.isHighlight ? "font-black text-zinc-950 dark:text-white text-base" : ""} ${row.isPrice ? "font-black text-blue-600 dark:text-blue-400" : "text-zinc-700 dark:text-zinc-300"}`}>
-                                            {row.val}
-                                        </span>
-                                    )}
+                            
+                            {/* Kode Order */}
+                            <div className="flex justify-between items-center text-sm border-b border-zinc-100 dark:border-zinc-800/60 pb-2.5">
+                                <span className="font-bold text-zinc-400 text-xs uppercase tracking-wider">Kode Order</span>
+                                <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{selectedOrder.id}</span>
+                            </div>
+
+                            {/* Customer */}
+                            <div className="flex justify-between items-center text-sm border-b border-zinc-100 dark:border-zinc-800/60 pb-2.5">
+                                <span className="font-bold text-zinc-400 text-xs uppercase tracking-wider">Customer</span>
+                                <span className="font-black text-zinc-950 dark:text-white text-base">{selectedOrder.customer}</span>
+                            </div>
+
+                            {/* Semua Item Hardware (.items?.map) */}
+                            <div className="border-b border-zinc-100 dark:border-zinc-800/60 pb-2.5">
+                                <span className="block font-bold text-zinc-400 text-xs uppercase tracking-wider mb-2">Semua Item Hardware</span>
+                                <div className="flex flex-col gap-1.5 max-h-24 overflow-y-auto">
+                                    {selectedOrder.items?.map((item, index) => (
+                                        <div key={index} className="flex justify-between bg-zinc-100 dark:bg-zinc-800 px-2.5 py-1.5 rounded-xl text-xs font-medium">
+                                            <span className="text-zinc-700 dark:text-zinc-300">{item.product_name}</span>
+                                            <span className="font-bold text-blue-600 dark:text-blue-400">x{item.qty}</span>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
+                            </div>
+
+                            {/* Total Nilai */}
+                            <div className="flex justify-between items-center text-sm border-b border-zinc-100 dark:border-zinc-800/60 pb-2.5">
+                                <span className="font-bold text-zinc-400 text-xs uppercase tracking-wider">Total</span>
+                                <span className="font-black text-blue-600 dark:text-blue-400">{formatRupiah(selectedOrder.total)}</span>
+                            </div>
+
+                            {/* Metode Pembayaran */}
+                            <div className="flex justify-between items-center text-sm border-b border-zinc-100 dark:border-zinc-800/60 pb-2.5">
+                                <span className="font-bold text-zinc-400 text-xs uppercase tracking-wider">Metode Pembayaran</span>
+                                <span className="font-medium text-zinc-700 dark:text-zinc-300">{selectedOrder.payment_method || "COD"}</span>
+                            </div>
+
+                            {/* Status Pembayaran */}
+                            <div className="flex justify-between items-center text-sm border-b border-zinc-100 dark:border-zinc-800/60 pb-2.5">
+                                <span className="font-bold text-zinc-400 text-xs uppercase tracking-wider">Status Pembayaran</span>
+                                <span className={`font-bold ${selectedOrder.payment === "PAID" || selectedOrder.payment === "Lunas" ? "text-green-500" : "text-amber-500"}`}>
+                                    {selectedOrder.payment}
+                                </span>
+                            </div>
+
+                            {/* Status Pengiriman */}
+                            <div className="flex justify-between items-center text-sm border-b border-zinc-100 dark:border-zinc-800/60 pb-2.5">
+                                <span className="font-bold text-zinc-400 text-xs uppercase tracking-wider">Status Pengiriman</span>
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black rounded-lg uppercase border tracking-wider ${getStatusStyle(selectedOrder.status)}`}>
+                                    <span className={`w-1 h-1 rounded-full ${getDotStyle(selectedOrder.status)}`}></span>
+                                    {selectedOrder.status}
+                                </span>
+                            </div>
+
+                            {/* Tracking Number (Ketentuan Baru) */}
+                            <div className="flex justify-between items-center text-sm border-b border-zinc-100 dark:border-zinc-800/60 pb-2.5">
+                                <span className="font-bold text-zinc-400 text-xs uppercase tracking-wider">Tracking Number</span>
+                                <span className="font-mono text-xs font-bold tracking-wide text-zinc-700 dark:text-zinc-300">
+                                    {selectedOrder.tracking_number || "-"}
+                                </span>
+                            </div>
+
+                            {/* Tanggal */}
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="font-bold text-zinc-400 text-xs uppercase tracking-wider">Tanggal</span>
+                                <span className="font-medium text-zinc-700 dark:text-zinc-300">{selectedOrder.date}</span>
+                            </div>
                         </div>
 
                         <button

@@ -306,13 +306,12 @@ export default function Shipping() {
                                         </div>
                                         <div className="group">
                                             <label className="block text-[10px] font-black text-zinc-400 mb-2 uppercase tracking-widest">No. Tracking / Resi</label>
-                                            <input 
-                                                type="text" 
-                                                required 
-                                                placeholder="Contoh: JD00123..."
-                                                className="w-full bg-slate-50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 text-sm text-slate-900 dark:text-white placeholder-zinc-600 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all" 
-                                                value={formData.tracking_number} 
-                                                onChange={(e) => setFormData({...formData, tracking_number: e.target.value})} 
+                                            <input
+                                                type="text"
+                                                value={item.tracking_number || "-"}
+                                                readOnly
+                                                className=" w-fullrounded-lgborderborder-slate-200dark:border-zinc-800
+                                                    bg-transparentpx-3py-2 text-xs"
                                             />
                                         </div>
                                     </div>

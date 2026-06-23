@@ -70,7 +70,9 @@ export default function Reports() {
             setCustomers(dataCustomers);
             setProducts(dataProducts);
 
-            // 1. Hitung Card Statistik Utama
+            // ====================================================
+            // 1. HITUNG CARD STATISTIK UTAMA
+            // ====================================================
             const totalPendapatan = dataOrders.reduce((sum, order) => sum + Number(order.total_price || 0), 0);
             setStats({
                 pendapatanKotor: totalPendapatan,
@@ -79,52 +81,73 @@ export default function Reports() {
                 katalogProduk: dataProducts.length
             });
 
-            // 2. Olah Data Grafik Penjualan Bulanan
+            // ====================================================
+            // 2. OLAH DATA GRAFIK PENJUALAN BULANAN
+            // ====================================================
             const monthsOrder = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
             const monthlySalesMap = {};
             
-            // Inisialisasi map bulan awal dengan nilai 0
             monthsOrder.forEach(m => { monthlySalesMap[m] = 0; });
 
             dataOrders.forEach(order => {
                 if (order.created_at) {
                     const date = new Date(order.created_at);
                     const monthName = monthsOrder[date.getMonth()];
-                    // sales = jumlah transaksi/order per bulan
                     monthlySalesMap[monthName] += 1; 
                 }
             });
 
-            // Ubah format menjadi array objek untuk Recharts
             const formattedSalesData = monthsOrder.map(month => ({
                 month: month,
                 sales: monthlySalesMap[month]
             }));
             setSalesData(formattedSalesData);
 
-            // 3. Olah Data Produk Terlaris (Kelompokkan berdasarkan product_name & sum qty)
+            // ====================================================
+            // 3. REFACTOR: OLAH DATA PRODUK TERLARIS (From order.items)
+            // ====================================================
+            console.log("🛠️ Debug API - Struktur orders & items diterima:", dataOrders);
+
             const productMap = {};
-            dataOrders.forEach(order => {
-                const pName = order.product_name;
-                const pQty = Number(order.qty || 0);
-                if (pName) {
-                    productMap[pName] = (productMap[pName] || 0) + pQty;
+
+            dataOrders.forEach((order, index) => {
+                // Pengecekan jika order.items kosong, undefined, atau bukan sebuah array
+                if (!order.items || !Array.isArray(order.items)) {
+                    console.warn(`⚠️ Debug API: Order indeks ke-${index} (${order.order_code || 'Tanpa Kode'}) tidak memiliki array 'items'.`);
+                    return; // Loncat ke data order berikutnya
                 }
+
+                // Masuk ke dalam array items untuk menjumlahkan qty hardware
+                order.items.forEach(item => {
+                    const pName = item.product_name;
+                    const pQty = Number(item.qty || 0);
+
+                    if (pName) {
+                        productMap[pName] = (productMap[pName] || 0) + pQty;
+                    }
+                });
             });
 
+            console.log("📊 Debug API - Hasil Mapping Akumulasi Kuantitas:", productMap);
+
+            // Transformasi map object ke format Array Recharts [{ name, sold }]
             const formattedProductData = Object.keys(productMap).map(name => ({
                 name: name,
                 sold: productMap[name]
             }))
-            .sort((a, b) => b.sold - a.sold) // Urutkan terbesar ke terkecil
-            .slice(0, 5); // Ambil maksimal 5 produk
+            .sort((a, b) => b.sold - a.sold) // Urutkan peringkat tertinggi ke terendah
+            .slice(0, 5); // Ambil maksimal 5 hardware teratas
 
+            console.log("📈 Debug API - Hasil Akhir 5 Produk Terlaris untuk BarChart:", formattedProductData);
+            
             setProductData(formattedProductData);
 
-            // 4. Olah Data Top Customer (Urutkan berdasarkan totalBelanja terbesar)
+            // ====================================================
+            // 4. OLAH DATA TOP CUSTOMER
+            // ====================================================
             const formattedTopCustomers = [...dataCustomers]
                 .sort((a, b) => Number(b.totalBelanja || 0) - Number(a.totalBelanja || 0))
-                .slice(0, 5); // Ambil 5 customer teratas
+                .slice(0, 5);
 
             setTopCustomers(formattedTopCustomers);
             setLoading(false);
